@@ -1,0 +1,337 @@
+system.c - wylaczenie led, dodanie przyciskow
+app.h - dodanie: 
+    char w800[18];
+    char w600[18];
+    char w350[18];
+    char w200[18];
+    char czas[18];
+    char koniec1[18];
+    char pusto[18];
+
+#define FCY 4000000ULL
+#include <stdio.h>
+#include <stdlib.h>
+#include <stddef.h>
+#include <stdbool.h>
+#include <libpic30.h>
+#include "app.h"
+
+#define ONE_VOLT 310
+#define ONE_TENTH_VOLT 31
+#define ONE_HUNDREDTH_VOLT 3
+
+void Update_LCD ( void ) ;
+void SYS_Initialize ( void ) ;
+extern void ConvertADCVoltage ( unsigned int  ) ;
+extern void Hex2Dec ( unsigned char ) ;
+
+
+APP_DATA appData = {
+    .messageLine1 = "  MIKROFALOWKA  ",
+    .messageLine2 = "Press S3 to test",
+    .messageTime  = "                ",
+    .messageADC   = "                ",
+    .w800         = "Moc:        800W",
+	.w600   	  = "Moc:        600W",
+	.w350         = "Moc:        350W",
+    .w200         = "Moc:        200W",
+	.czas         = "Czas:      00:00",
+	.koniec1      = "  KONIEC CZASU  ",
+    .pusto        = "                ",
+} ;
+
+int moc = 0;
+int min1 = 0;
+int min2 = 0;
+int sek1 = 0;
+int sek2 = 0;
+bool flag = false;
+
+void czas(int min1, int min2, int sek1, int sek2) 
+{
+	LCD_PutChar ( 'C' ) ;
+	LCD_PutChar ( 'z' ) ;
+	LCD_PutChar ( 'a' ) ;
+	LCD_PutChar ( 's' ) ;
+	LCD_PutChar ( ':' ) ;
+	
+	LCD_PutChar ( ' ' ) ;
+	LCD_PutChar ( ' ' ) ;
+	LCD_PutChar ( ' ' ) ;
+	LCD_PutChar ( ' ' ) ;
+	LCD_PutChar ( ' ' ) ;
+	LCD_PutChar ( ' ' ) ;
+	
+	LCD_PutChar ( (int)(min1)+'0' ) ;
+	LCD_PutChar ( (int)(min2)+'0' ) ;
+	LCD_PutChar ( ':' ) ;
+	LCD_PutChar ( (int)(sek1)+'0' ) ;
+	LCD_PutChar ( (int)(sek2)+'0' ) ;
+}
+
+void dodaj_moc(int i) 
+{
+	if(i == 0) 
+    {
+		LCD_PutString((char *) & appData.w200, sizeof (appData.w200));
+		czas(min1, min2, sek1, sek2);
+	}
+	if(i == 1) 
+    {
+		LCD_PutString((char *) & appData.w350, sizeof (appData.w350));
+		czas(min1, min2, sek1, sek2);
+	}
+	else if(i == 2) 
+    {
+		LCD_PutString((char *) & appData.w600, sizeof (appData.w600));
+		czas(min1, min2, sek1, sek2);
+	}
+	else if(i == 3) 
+    {
+		LCD_PutString((char *) & appData.w800, sizeof (appData.w800));
+		czas(min1, min2, sek1, sek2);
+	}
+}
+
+void czas_plus(void) 
+{
+	if (sek1 < 6) 
+    {
+		sek1 = sek1 + 3;
+	}
+	if (sek1 == 6) 
+    {
+		sek1 = 0;
+		min2 = min2 + 1;
+	}
+	if ( min2 > 9) 
+    {
+		min1 = min1 + 1;
+		min2 = 0;
+	}
+	if ( min1 > 6) 
+    {
+		min1 = 0;
+		min2 = 0;
+		sek1 = 0;
+		sek2 = 0;
+	}
+}
+
+void czas_minus(int *min1, int *min2, int *sek1, int *sek2) 
+{
+    (*sek2)--;
+    if (*sek2 == -1) 
+    {
+        *sek2 = 9;
+        (*sek1)--;
+    }
+    if (*sek1 == -1) 
+    {
+        *sek1 = 5;
+        (*min2)--;
+    }
+    if (*min2 == -1) 
+    {
+        *min2 = 9;
+        (*min1)--;
+    }
+}
+
+int main ( void )
+{
+    SYS_Initialize ( ) ;
+
+    LCD_PutString ( (char*) &appData.messageLine1[0] , sizeof (appData.messageLine1 ) - 1  ) ;
+    LCD_PutString ( (char*) &appData.messageLine2[0] , sizeof (appData.messageLine2 ) - 1  ) ;
+
+    while (!BUTTON_IsPressed ( BUTTON_S3 )) ;
+
+    TIMER_SetConfiguration ( TIMER_CONFIGURATION_RTCC ) ;
+
+    ADC_SetConfiguration ( ADC_CONFIGURATION_AUTO_SAMPLE_CONVERT ) ;
+    
+    LCD_PutString((char *) & appData.w200, sizeof (appData.w200));
+    LCD_PutString((char *) & appData.czas, sizeof (appData.czas));
+
+
+    while ( 1 )
+    {
+        if ( appData.rtc_lcd_update )
+        {
+            Hex2Dec ( appData.hours ) ;
+            appData.rtc_lcd_update = 0 ;
+            if ( appData.adc_lcd_update )
+            {
+                dodaj_moc(moc);
+                if(BUTTON_IsPressed ( BUTTON_S3 )) 
+                {
+                    if(moc <= 3) 
+                    {
+                        moc = moc + 1;
+                    }
+                    else 
+                    {
+                        moc = 0;
+                    }
+                }
+                if(BUTTON_IsPressed ( BUTTON_S6 )) 
+                {
+                    czas_plus();
+                }
+                if(BUTTON_IsPressed ( BUTTON_S5 ))
+                {
+                    flag = true;
+                }
+                while(flag) {
+                    czas_minus(&min1, &min2, &sek1, &sek2);
+                    dodaj_moc(moc);
+                    if(BUTTON_IsPressed ( BUTTON_S5 ))
+                    {
+                        flag = false;
+                    }
+                    if(min1 == 0 && min2 == 0 && sek2 == 0 && sek1 == 0) 
+                    {
+                        for(int i = 0; i < 3; i++)
+                        {
+                            __delay_ms(200);
+                            LCD_PutString((char *) & appData.pusto, sizeof (appData.pusto));
+                            __delay_ms(200);
+                            LCD_PutString((char *) & appData.koniec1, sizeof (appData.koniec1));
+                            __delay_ms(200);
+                        }
+                        flag = false;
+                    }
+                }
+                if(BUTTON_IsPressed ( BUTTON_S4 )) 
+                {
+                    moc = 0;
+                    min1 = 0;
+                    min2 = 0;
+                    sek1 = 0;
+                    sek2 = 0;    
+                    //break;
+                }
+                appData.adc_lcd_update = 0 ;
+            }
+        }
+    } ;
+}
+
+void Update_LCD ( void )
+{
+    LCD_PutChar ( 'T' ) ;
+    LCD_PutChar ( 'i' ) ;
+    LCD_PutChar ( 'm' ) ;
+    LCD_PutChar ( 'e' ) ;
+    LCD_PutChar ( ' ' ) ;
+    LCD_PutChar ( appData.tens + 0x30 ) ;
+    LCD_PutChar ( appData.ones + 0x30 ) ;
+
+    Hex2Dec ( appData.minutes ) ;
+    LCD_PutChar ( ':' ) ;
+    LCD_PutChar ( ' ' ) ;
+    LCD_PutChar ( appData.tens + 0x30 ) ;
+    LCD_PutChar ( appData.ones + 0x30 ) ;
+
+    Hex2Dec ( appData.seconds ) ;
+    LCD_PutChar ( ':' ) ;
+    LCD_PutChar ( ' ' ) ;
+    LCD_PutChar ( appData.tens + 0x30 ) ;
+    LCD_PutChar ( appData.ones + 0x30 ) ;
+
+}
+
+
+void ConvertADCVoltage ( unsigned int adc_conv_data )
+{
+    appData.adones = 0 ;
+    appData.adtens = 0 ;
+    appData.adhunds = 0 ;
+    appData.adthous = 0 ;
+
+    while ( adc_conv_data > 0 )
+    {
+        if ( adc_conv_data > ( ONE_VOLT - 1 ) )
+        {
+            appData.adones++ ;
+
+            adc_conv_data -= ONE_VOLT ;
+        }
+
+
+        else if ( adc_conv_data > ( ONE_TENTH_VOLT - 1 ) )
+        {
+            if ( appData.adtens < 9 )
+            {
+                appData.adtens++ ;
+            }
+            else
+            {
+                appData.adones++ ;
+
+                appData.adtens = 0 ;
+            }
+
+            adc_conv_data -= ONE_TENTH_VOLT ;
+        }
+
+        else if ( adc_conv_data > ( ONE_HUNDREDTH_VOLT - 1 ) )
+        {
+            if ( appData.adhunds < 9 )
+            {
+                appData.adhunds++ ;
+            }
+            else
+            {
+                appData.adtens++ ;
+
+                appData.adhunds = 0 ;
+            }
+
+            adc_conv_data -= ONE_HUNDREDTH_VOLT ;
+        }
+
+        else if ( adc_conv_data <= ( ONE_HUNDREDTH_VOLT - 1 ) )
+        {
+            appData.adthous++ ;
+            adc_conv_data -- ;
+        }
+    }
+
+    appData.adones += 0x30 ;
+    appData.adtens += 0x30 ;
+    appData.adhunds += 0x30 ;
+    appData.adthous += 0x30 ;
+}
+
+void Hex2Dec ( unsigned char count )
+{
+    appData.hunds = 0 ;
+    appData.tens  = 0 ;
+    appData.ones = 0 ;
+
+    while ( count >= 10 )
+    {
+
+        if ( count >= 200 )
+        {
+            count -= 200 ;
+            appData.hunds = 0x02 ;
+        }
+
+        if (count >= 100)
+        {
+            count -= 100 ;
+            appData.hunds++ ;
+        }
+
+        if (count >= 10 )
+        {
+            count -= 10 ;
+            appData.tens++ ;
+        }
+    }
+
+    appData.ones = count ;
+}
